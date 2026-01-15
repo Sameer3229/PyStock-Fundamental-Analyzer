@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 
 # ==========================================
-# 1. BACKEND ENGINE (UNCHANGED) ⚙️
+# 1. BACKEND ENGINE 
 # ==========================================
 
 def clean_number(value):
@@ -197,8 +197,11 @@ def get_stock_foundation(ticker):
     except Exception as e: return None
 
 # ==========================================
-# 2. UI TRANSFORMATION LOGIC (UPDATED SORTING) 🛠️
+# 2. UI TRANSFORMATION LOGIC 
 # ==========================================
+
+import pandas as pd
+import streamlit as st
 
 def transform_to_grid(flat_data):
     """ Simple Grid for Financials & Stock Data """
@@ -206,25 +209,24 @@ def transform_to_grid(flat_data):
     data_map = {}
     years = set()
     for key, value in flat_data.items():
-        if "_" in key and key.rsplit('_', 1)[-1].isdigit(): # Check year at end
+        if "_" in key and key.rsplit('_', 1)[-1].isdigit(): 
             parts = key.rsplit('_', 1)
             metric, year = parts[0], parts[1]
             if metric not in data_map: data_map[metric] = {}
             data_map[metric][year] = value
             years.add(year)
-    if not data_map: return pd.DataFrame(list(flat_data.items()), columns=["Metric", "Value"])
+    if not data_map: return pd.DataFrame(list(flat_data.items()), columns=["Metric", "Value"]).astype(str) # FIX 1
+    
     df = pd.DataFrame.from_dict(data_map, orient='index')
     
-    # --- UPDATED: Sort DESCENDING (Latest Year First) ---
+    # --- Sort DESCENDING ---
     df = df.sort_index(axis=1, ascending=False) 
     df = df.sort_index(axis=0) 
-    return df
+    
+    return df.astype(str) # FIX 2: Sab kuch string bana diya taake crash na ho
 
 def make_hierarchical_grid(flat_data):
-    """ 
-    Hierarchy for Balance Sheet:
-    Heading (Empty) -> Sub Items (Values)
-    """
+    """ Hierarchy for Balance Sheet """
     if not flat_data: return pd.DataFrame()
     
     tree = {}
@@ -246,7 +248,6 @@ def make_hierarchical_grid(flat_data):
             if item not in tree[cat]: tree[cat][item] = {}
             tree[cat][item][year] = value
 
-    # --- UPDATED: Sort Years DESCENDING (Latest First) ---
     sorted_years = sorted(list(all_years), reverse=True)
     rows = []
     
@@ -260,16 +261,19 @@ def make_hierarchical_grid(flat_data):
             display_name = f"      {item_name}" if category != "Items" else item_name
             row = {"Metric": display_name}
             for y in sorted_years:
-                row[y] = year_vals.get(y, 0)
+                # FIX 3: Value ko pehle hi string bana diya
+                row[y] = str(year_vals.get(y, "0"))
             rows.append(row)
             
-    return pd.DataFrame(rows)
+    # FIX 4: Final DataFrame ko bhi string ensure kar diya
+    return pd.DataFrame(rows).astype(str)
 
 def show_kv_table(data_dict, title):
     if not data_dict: return
     df = pd.DataFrame(list(data_dict.items()), columns=['Metric', 'Value'])
     st.caption(title)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    # FIX 5: width=True ghalat syntax hai naye version mein, aur .astype(str) zaroori hai
+    st.dataframe(df.astype(str), width="stretch", hide_index=True)
 
 # ==========================================
 # 3. STREAMLIT APP DISPLAY 🖥️
@@ -308,7 +312,7 @@ if 'data' in st.session_state and st.session_state['data']:
     # 1. Financial History
     with t1:
         st.subheader("Financial History (5 Years)")
-        st.dataframe(transform_to_grid(data['Financials']), use_container_width=True)
+        st.dataframe(transform_to_grid(data['Financials']), width="stretch")
 
     # 2. Market Overview
     with t2:
@@ -328,7 +332,7 @@ if 'data' in st.session_state and st.session_state['data']:
             show_kv_table(debt, "🏦 Capital Structure")
         
         st.caption("🚀 Returns Profile")
-        st.dataframe(pd.DataFrame([returns]), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame([returns]), width="stretch", hide_index=True)
 
     # 3. Growth
     with t3:
@@ -343,29 +347,29 @@ if 'data' in st.session_state and st.session_state['data']:
     # 5. Stock Data
     with t5:
         st.subheader("Stock Price History")
-        st.dataframe(transform_to_grid(data['Stock Data']), use_container_width=True)
+        st.dataframe(transform_to_grid(data['Stock Data']), width="stretch")
 
     # 6. Annual IS (Quarterly Removed)
     with t6:
         st.subheader("Annual Income Statement")
-        st.dataframe(transform_to_grid(data['Ann_IS']), use_container_width=True)
+        st.dataframe(transform_to_grid(data['Ann_IS']), width="stretch")
         
         # --- HIDDEN QUARTERLY SECTION (As requested) ---
         # st.subheader("Quarterly Income Statement")
-        # st.dataframe(transform_to_grid(data['Qtr_IS']), use_container_width=True)
+        # st.dataframe(transform_to_grid(data['Qtr_IS']), width="stretch")
 
     # 7. Balance Sheet (With Hierarchy)
     with t7:
         st.subheader("Balance Sheet Position")
         with st.expander("🏛️ Annual Balance Sheet", expanded=True):
             df_bs_ann = make_hierarchical_grid(data['BS_Ann'])
-            st.dataframe(df_bs_ann, use_container_width=True, height=600, hide_index=True)
+            st.dataframe(df_bs_ann, width="stretch", height=600, hide_index=True)
         
         # Quarterly BS ko bhi option mein rakha hai (Expandable), 
         # agar ye bhi chupana hai to bata dena.
         with st.expander("🏛️ Quarterly Balance Sheet"):
             df_bs_qtr = make_hierarchical_grid(data['BS_Qtr'])
-            st.dataframe(df_bs_qtr, use_container_width=True, hide_index=True)
+            st.dataframe(df_bs_qtr, width="stretch", hide_index=True)
 
 else:
     st.info("Enter Stock ID to analyze.")
